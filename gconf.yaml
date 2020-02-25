@@ -1,0 +1,8 @@
+host: localhost
+db: Test
+attrs:
+  RaiseError: 1
+  PrintError: 1
+  mysql_enable_utf8: 1
+  mysql_auto_reconnect: 1
+  timeout: 720000

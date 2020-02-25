@@ -1,0 +1,82 @@
+#!/usr/bin/env perl
+use Mojolicious::Lite;
+use DBI;
+use strict;
+use lib './';
+use Utils qw/LoadYamlFile/;
+use Data::Dumper;
+
+helper dbh=> sub{
+	my $c = shift;
+	my $conf = LoadYamlFile('gconf.yaml');
+	my $dbh = DBI->connect(
+        'dbi:mysql:dbname='
+          . $conf->{db}
+          . ( $conf->{host} ? ';host=' . $conf->{host} : '' )
+          . ( $conf->{port} ? ';port=' . $conf->{port} : '' ),
+        $conf->{user} ? $conf->{user} : '',
+        $conf->{passwd} ? $conf->{passwd} : '',
+        $conf->{attrs}) or die $DBI::errstr;
+	return $dbh;
+};
+
+get '/index'=>sub{
+		my $c = shift;
+		my $params = $c->req->params->to_hash;
+		if(exists $params->{email}){
+			$c->stash("email"=>$params->{email});
+			if($params->{email} =~ /([a-z0-9\-\_.]+\@[a-z0-9\-_.]+\.[a-z0-9\-_.]+)/i){	
+				my $sql = qq~select created,str,int_id from message where int_id in (select int_id from log where address=?) union select created,str,int_id from log where int_id in (select int_id from log where address=?) order by int_id,created limit 101~;
+				my $data = $c->dbh->selectall_arrayref($sql,undef,$params->{email},$params->{email});
+				if(scalar(@$data)){
+					$c->stash("main_data" => $data);
+					$c->stash("warn" => 1) if scalar(@$data) >= 101;
+				}
+			}else{
+				$c->stash("bad_email" => 1);
+			}
+		}
+		print "render\n";
+	$c->render("index");
+};
+app->secrets("anjgfkhanfdhifcjweioer423et");
+app->start;
+__DATA__
+
+@@ index.html.ep
+% layout 'default';
+% title 'Welcome';
+% my $data = $c->stash('main_data') || [];
+% my $warn = $c->stash('warn') || 0;
+% my $bad_email = $c->stash('bad_email') || 0;
+% my $email = $c->stash('email') || '';
+<form action ="/index">
+	<input type="text" name="email" value="<%= $email %>">
+	<input type="submit" value = "Вывести">
+</form>
+
+% my $i = 0;
+<table>
+% if(scalar(@$data)){
+% foreach my $line (@$data) {
+% $i++;
+    <tr><td width=100<b><%= $line->[0] %></td><td><%= $line->[1] %></td></tr>
+%	last if $i>=100;
+% }
+% }else{
+	<p>no data</p>
+% }
+</table>
+% if ($warn){
+	<p><b>we have more then 100 results</b></p>
+% }
+% if ($bad_email){
+	<p>bad email inputed</p>
+% }
+
+@@ layouts/default.html.ep
+<!DOCTYPE html>
+<html>
+  <head><title><%= title %></title></head>
+  <body><%= content %></body>
+</html>
